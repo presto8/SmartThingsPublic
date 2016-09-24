@@ -1,17 +1,14 @@
 /**
  *  Copyright 2016 Preston Hunt
  *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may not
- *  use this file except in compliance with the License. You may obtain a copy
- *  of the License at:
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- *  License for the specific language governing permissions and limitations
- *  under the License.
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
  *
  *  Author: Preston Hunt
  */
@@ -34,13 +31,11 @@ preferences {
 }
 
 def installed() {
-    // we do all init in updated(), but implement an empty installed() so
-    // SmartThings won't complain
+    // we do all init in updated(), but implement an empty installed() to SmartThings won't complain
 }
 
 def updated() {
-    // called whenever the user changes any preferences, we also use this do to
-    // init instead of installed()
+    // called whenever the user changes any preferences, we also use this do to init instead of installed()
 
     unsubscribe()
     subscribe(contacts, "contact", handler)

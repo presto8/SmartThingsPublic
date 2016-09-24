@@ -39,9 +39,16 @@ def updated() {
     log.trace "installed and monitoring"
 }
 
-def sunsetHandler(evt) {
+def sunriseHandler(evt) {
     log.trace "sunriseHandler()"
-
+    
+    switches.each{s ->
+       	def prevState = s.currentValue("switch")
+        s.setLevel(100)
+        if (prevState == "off") {
+        	s.off()
+        }
+    }
+    
     log.trace "brightening lights to 100%"
-    switches.setLevel(100)
 }

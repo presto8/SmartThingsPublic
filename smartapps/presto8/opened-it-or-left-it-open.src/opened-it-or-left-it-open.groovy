@@ -66,6 +66,8 @@ def updated() {
 	unsubscribe()
 	subscribe(contacts, "contact.open", openHandler)
     subscribe(locks, "lock.unlocked", openHandler)
+	subscribe(contacts, "contact.closed", closedHandler)
+    subscribe(locks, "lock.locked", closedHandler)
     
     log.trace "installed and monitoring for opened devices"
 }
@@ -77,6 +79,9 @@ def openHandler(evt) {
     runEvery5Minutes(checkOpen)
 }
 
+def closedHandler(evt) {
+}
+
 def checkOpen() {
 	log.trace "checking for open devices"
 
@@ -84,7 +89,7 @@ def checkOpen() {
     def locks = checkHelper(locks, "lock", "unlocked")      
 	if (contacts + locks == 0) {
         //log.trace "all sensors closed, not running any more checks"
-        notify("all monitored sensors are closed")
+        notify("All monitored sensors are closed")
         unschedule()
     }
 }
