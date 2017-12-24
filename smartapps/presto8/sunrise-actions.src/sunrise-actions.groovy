@@ -34,21 +34,27 @@ def updated() {
     // called whenever the user changes any preferences, we also use this do to init instead of installed()
 
     unsubscribe()
-    subscribe(location, "sunrise", sunriseHandler)
+    //subscribe(location, "sunrise", sunriseHandler)
+    log.trace "currently disabled"
     
     log.trace "installed and monitoring"
+    //setSwitchesLevel(switches, 40)
+}
+
+def setSwitchesLevel(switches, level) {
+    switches.each{s ->
+    	log.trace "processing " + s
+       	def prevState = s.currentValue("switch")
+        log.trace "setting " + s + " level to " + level + "%"
+        log.trace "switch previous setting was " + prevState
+        s.setLevel(level)
+        if (prevState == "off") {
+        	log.trace "switch was previously off, sending off command"
+        	//s.off([delay: 5000])
+        }
+    }
 }
 
 def sunriseHandler(evt) {
-    log.trace "sunriseHandler()"
-    
-    switches.each{s ->
-       	def prevState = s.currentValue("switch")
-        s.setLevel(100)
-        if (prevState == "off") {
-        	s.off()
-        }
-    }
-    
-    log.trace "brightening lights to 100%"
+    setSwitchesLevel(switches, 100)
 }

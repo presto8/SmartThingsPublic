@@ -51,6 +51,7 @@ preferences {
         input "locks", "capability.lock", title: "Locks", multiple: true
         input "rateLimitMinutes", "number", title: "Don't repeat open/unlock notifications within this many minutes", required: true
 		input "exponentialBackoff", "bool", title: "Double time between notifications up to 8 hours", required: true
+        input "musicPlayer", "capability.musicPlayer", title: "Announce with these text-to-speech devices (musicPlayer)", multiple: true, required: false
 	}
 }
 
@@ -70,6 +71,10 @@ def updated() {
     subscribe(locks, "lock.locked", closedHandler)
     
     log.trace "installed and monitoring for opened devices"
+    if (musicPlayer) {
+    	musicPlayer*.playText("installed")
+    }
+
 }
 
 def openHandler(evt) {  
@@ -142,8 +147,13 @@ def notify(msg, quietMinutes=rateLimitMinutes) {
     }
 
     // If we make it this far, send the message and make a map entry with an expiration time in the future
-    sendPush(msg)
+    //sendPush(msg)
+    sendSmsMessage("5038079580", msg)
     log.trace "notify(): " + msg
+    
+    if (musicPlayer) {
+    	musicPlayer*.playText(msg)
+    }
     
     state.notifications[(msg)] = now() + quietMinutes * 60 * 1000L
 }

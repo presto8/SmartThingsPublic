@@ -15,7 +15,8 @@ definition(
     author: "me@prestonhunt.com",
     description: "Control thermostat based on presence sensor",
     category: "Green Living",
-    iconUrl: "http://icons.iconarchive.com/icons/icons8/windows-8/512/Science-Temperature-icon.png",
+//    iconUrl: "http://icons.iconarchive.com/icons/icons8/windows-8/512/Science-Temperature-icon.png",
+    iconUrl: "https://upload.wikimedia.org/wikipedia/commons/f/f1/Bip-1398748.svg",
     iconX2Url: "http://icons.iconarchive.com/icons/icons8/windows-8/512/Science-Temperature-icon.png"
 )
 
