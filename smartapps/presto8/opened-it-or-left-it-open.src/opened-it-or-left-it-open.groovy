@@ -30,14 +30,25 @@ definition(
 /*
 Theory of operation:
 
+The desired end user behavior is:
+- Limit the number of notifications to the absolute minimum; have a user
+  setting "notification time period" and combine multiple messages during this
+  period into a single notification message.
+- If a sensor is opened and then closed within a short "cooling off" time
+  period, only send one notification (that the sensor was opened and then
+  closed)
+- If a sensor is left open for a long time, keep sending notifications but
+  slowly increase the time between notifications.
+
 - A handler is called whenever a lock or contact sensor is opened
   - Handler immediately sends out a "device was opened" notification
-  - Handler unschedules all tasks
-  - Handler schedules the checker to run every 5 minutes
+  - Handler schedules the checker to run every 30 seconds. This is theo nly
+    place the schedule is started.
 
 - Checker 
   - Sends "still open" notification for any open device
-  - If all devices are closed, unschedules all tasks
+  - If all devices are closed, unschedules all tasks. This is the only place
+    the schedule is stopped.
 
 - Notification helper
   - Automatically rate limits messages
@@ -49,6 +60,7 @@ preferences {
 	section("Opened It or Left It Open") {
 		input "contacts", "capability.contactSensor", title: "Sensor", multiple: true
         input "locks", "capability.lock", title: "Locks", multiple: true
+        input "coolingOffPeriod", "number", title: "Only send one notification if sensor is opened then closed within this time (in seconds)", required: true
         input "rateLimitMinutes", "number", title: "Don't repeat open/unlock notifications within this many minutes", required: true
 		input "exponentialBackoff", "bool", title: "Double time between notifications up to 8 hours", required: true
         input "musicPlayer", "capability.musicPlayer", title: "Announce with these text-to-speech devices (musicPlayer)", multiple: true, required: false
@@ -63,12 +75,16 @@ def updated() {
     // This is used to implement the exponential backoff algorithm for notifications.
     state.lastMinutes = [:]
 	state.notifications = [:]
+	state.notificationCount = [:]
+    state.running = false
+
+    state.openDevices = [:]
     
 	unsubscribe()
 	subscribe(contacts, "contact.open", openHandler)
     subscribe(locks, "lock.unlocked", openHandler)
-	subscribe(contacts, "contact.closed", closedHandler)
-    subscribe(locks, "lock.locked", closedHandler)
+	//subscribe(contacts, "contact.closed", closedHandler)
+    //subscribe(locks, "lock.locked", closedHandler)
     
     log.trace "installed and monitoring for opened devices"
     if (musicPlayer) {
@@ -77,19 +93,55 @@ def updated() {
 
 }
 
-def openHandler(evt) {  
-    notify("$evt.displayName was just opened")
-    unschedule()
-    //checkOpen()
-    runEvery5Minutes(checkOpen)
+// openHandler() only does two things: updates openDevices with the time the
+// device was opened the device and starts the scheduler if it isn't running.
+// To prevent race conditions, only openHandler is allowed to change
+// openDevices.
+def openHandler(evt) {
+    def dev = evt.getDevice()
+    if (state.openDevices[dev.id] != null) {
+        log.trace "${dev.id}/${dev.name} is already open"
+    } else {
+        log.trace "${dev.id}/${dev.name} was opened, setting openDevices"
+        state.openDevices[dev.id] = now()
+    }
+
+    if (!state.running) {
+        runIn(30, checkOpen)
+        state.running = true
+    }
 }
 
+/*
 def closedHandler(evt) {
+    def dev = evt.getDevice()
+    if (state.openDevices[dev.id]) {
+        log.trace "${dev.id} was open but is not closed"
+        state.openDevices[dev.id] = null
+    } else {
+        log.trace "${dev.id} was marked as closed already but received a closed event; that shouldn't have happened"
+    }
 }
+*/
 
 def checkOpen() {
 	log.trace "checking for open devices"
 
+    state.openDevices.each{d, t ->
+        log.trace "examining device ${d.id}/${d.name}, opened at time $t"
+
+    }
+
+    def numStillOpen = state.openDevices.size()
+    if (numStillOpen > 0) {
+        log.trace "$numStillOpen devices still open; running again in 30 seconds"
+        runIn(30, checkOpen)
+    } else {
+        log.trace "all devices closed; not checking any more"
+        state.running = false
+    }
+
+/*
 	def contacts = checkHelper(contacts, "contact", "open")
     def locks = checkHelper(locks, "lock", "unlocked")      
 	if (contacts + locks == 0) {
@@ -97,6 +149,7 @@ def checkOpen() {
         notify("All monitored sensors are closed")
         unschedule()
     }
+*/
 }
 
 // Examines each device. If device is still open, sends notification.

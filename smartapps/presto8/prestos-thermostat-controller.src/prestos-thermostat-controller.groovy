@@ -7,6 +7,10 @@ If motion is detected, the thermostat is set to a "present temperature".
 A timer is set to automatically turn the thermostat back to a "not present temperature"
 after a period of time. Each time motion is detected, the timer is reset.
 
+Presence:
+- If any light is on
+- If motion sensor is triggered
+
 */
 
 definition(
@@ -23,6 +27,7 @@ definition(
 section {
     input "thermostat", "capability.thermostat", title: "Thermostat", required: true
     input "sensors", "capability.motionSensor", title: "Motion sensors", multiple: true, required: true
+    input "switches", "capability.switch", title: "Switches", multiple: true
     input "presentTemperature", "decimal", title: "present temperature"
     input "awayTemperature", "decimal", title: "away temperature"
     input "timeoutMinutes", "number", title: "timeout (minutes)"
