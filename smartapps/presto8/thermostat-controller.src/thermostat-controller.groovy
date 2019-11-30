@@ -1,16 +1,17 @@
 /*
-
 Presto's Thermostat Controller
 
-Give it a thermostat and one or more motion sensors.
-If motion is detected, the thermostat is set to "auto" mode.
-A timer is set to automatically turn the thermostat back to "off" after a period of time. Each time motion is detected, the timer is reset.
-The temperature is set to a day temperature and a night temperature at the indicated times.
+Give it a thermostat and some motion sensors and light switches.
+If motion is not detected after a period of time, the thermostat's set points are set to "away" values.
+If lights are on, somebody is assumed home.
+The operating state (cool/heat/auto/off) is never touched.
 
 Desired behavior:
-- At night, temperature should not go outside specified range
-- If nobody is present, should be turned off
-- If user overrides temperature set point, preserve user's intent
+- At night, temperature should not go outside specified range; note, there won't be any motion because everyone is in bed.
+- If no motion is detected for 16 hours, then go into vacation mode.
+- As soon as motion is detected, exit vacation mode.
+- TODO: Figure out pet detection.
+- Automatically save the user's set points for temporary overrides.
 
 Test cases:
 1. Time after 10pm, no hotter than 76
@@ -18,7 +19,6 @@ Test cases:
 
 New operation:
 
-- Don't change mode ever, use temperature set point
 - Don't have day and night temperatures; use presence detection to set temperature
 - Have summer and winter temperatures
 - If inactive, save current temperature and set to awayTemperature
@@ -27,6 +27,8 @@ New operation:
 Implementation
 - Register callbacks to save last motion time
 - Schedule every 15 minutes a check, if motion time has expired at that time, then take appropriate action
+- If the user ever changes the temperature, set that as the new "present" temperature
+- "
 */
 
 definition(
@@ -42,79 +44,111 @@ definition(
 section {
     input "thermostat", "capability.thermostat", title: "Thermostat", required: true
     input "sensors", "capability.motionSensor", title: "Motion sensors", multiple: true, required: true
+    input "switches", "capability.switch", title: "Switches", multiple: true, required: true
     //input "dayHour", "number", title: "Day starts at (hour)"
     //input "nightHour", "number", title: "Night starts at (hour)"
     input "timeoutMinutes", "number", title: "timeout (minutes)"
+	input "heatingSetPoint", "number", title: "Heating set point (F)", defaultValue: 68
+  	input "coolingSetPoint", "number", title: "Cooling set point (F)", defaultValue: 76
 }
 
-def installed() {}
+def installed() {
+}
 
 def updated() {
-    state.lastMotion = new Date();
-
+    state.lastMotion = new Date().getTime()
+    state.present = false
+    state.mode = 'Unknown' // same as location.mode, e.g. Home, Night, Away
+    saveTemps()
+    
     log.debug "updated(): ${settings}"
     unsubscribe()
     subscribe(sensors, "motion.active", motionActiveHandler)
-    //subscribe(thermostat, "temperature", handler)
-
-    runEvery15Minutes(periodic);
-
-    //def hoursTemps = temperatures.split(',')
-    //log.debug hoursTemps
-    //schedule("0 0 6 * * ?", setDayTemperature)
-    //schedule("0 0 10 * * ?", setNightTemperature)
+    subscribe(switches, "switch", switchHandler)
+    subscribe(thermostat, "temperature", temperatureHandler)
+    
+    // for dev, use every 1 minute, for production, every 15
+    runEvery1Minute(periodic)
+    //runEvery15Minutes(periodic)
 }
 
 def periodic() {
-    log.debug "entering periodic"
-    def minutes = 30
-    if (new Date().getTime() - state.lastMotion.getTime() > minutes*60*1000) {
-        log.debug "no motion in 30 minutes, time to set away action"
+    log.debug "entering periodic, location.mode=${location.mode} state.mode=${state.mode} present=${state.present}"
+    
+    // Change mode and heating & cooling setpoints
+    if (location.mode != state.mode) {
+        setMode(location.mode)
     }
-}
-
-def setTemp(temp) {
-    def curtemp = thermostat.currentHeatingSetpoint
-    if (curtemp != temp) {
-        log.debug "setting temperature setpoint to: $temp (was: $curtemp)"
-        thermostat.setHeatingSetpoint(temp)
-    } else {
-        log.debug "temperature already at desired value"
-    }
-}
-
-def setMode(mode) {
-    def cur = thermostat.currentThermostatMode
-    if (cur != mode) {
-        log.debug "thermostat currently is $cur, setting to $mode"
-        if (mode == 'auto') {
-            thermostat.auto()
-        } else {
-            thermostat.off()
+     
+    if (state.mode == 'Home' && state.present) {
+        // During awake time, take away action after timeoutMinutes
+        final timeLeft = timeoutMinutes * 60 * 1000 - (new Date().getTime() - state.lastMotion)
+        // log.debug "time left: " + timeLeft
+        if (timeLeft <= 0) {
+            log.debug "no motion in 30 minutes, time to set away action"
+            absent()
         }
-    } else {
-        log.debug "thermostat is already in requested mode ($mode), not doing anything"
     }
-}
-
-def setDayTemperature() {
-    setTemp(68)
-}
-
-def setNightTemperature() {
-    setTemp(58)
 }
 
 def motionActiveHandler(evt) {
-    log.debug "motion detected"
-    state.lastMotion = new Date()
-    //unschedule()
-    //setMode('auto')
-    //runIn(timeoutMinutes * 60, away)
+    log.debug "motion detected: ${evt.displayName}"
+    state.lastMotion = new Date().getTime()
+    present()
 }
 
-def away() {
-    log.debug "away(): no motion detected in $timeoutMinutes minutes, setting thermostat mode to off"
-    setMode('off')
+def switchHandler(evt) {
+    log.debug "switch changed: $evt"
 }
 
+def temperatureHandler(evt) {
+    log.debug "temperature change: $evt"
+}
+
+def setHeatCool(temp) {
+    if (thermostat.currentHeatingSetpoint != temp['heat']) {
+        log.debug "setting heating setpoint to: ${temp.heat}"
+        thermostat.setHeatingSetpoint(temp['heat'])
+    }
+    
+    if (thermostat.currentCoolingSetpoint != temp['cool']) {
+        log.debug "setting cooling setpoint to: ${temp.cool}"
+        thermostat.setCoolingSetpoint(temp['cool'])
+    }
+}
+
+def setMode(newMode) {
+    def map = [
+    	'Away':  [heat: 58, cool: 88],
+        'Night': [heat: 64, cool: 76],
+        'Home':  [heat: 68, cool: 76]
+    ]
+    
+    if (state.mode != newMode) {
+        log.debug "changing mode from ${state.mode} to $newMode"
+        setHeatCool(map[newMode])
+        state.mode = newMode
+    }
+}
+
+def absent() {
+    if (state.mode == 'Home' && state.present) {
+		log.debug "setting present=false"
+		saveTemps()
+		setHeatCool([heat: 58, cool: 88])
+        state.present = false
+    }
+}
+
+def present() {
+    if (state.mode == 'Home' && !state.present) {
+        log.debug "setting present=true"
+        setHeatCool(state.prevTemp)
+        state.present = true
+    }
+}
+
+def saveTemps() {
+    state.prevTemp = [heat: thermostat.currentHeatingSetpoint,
+    	              cool: thermostat.currentCoolingSetpoint]
+}
